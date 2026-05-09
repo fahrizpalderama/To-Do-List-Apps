@@ -290,6 +290,7 @@ export default function App() {
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
+      alert("Link disalin! \n\nPENTING: Agar orang lain bisa melihat tanpa login, Anda harus mengubah akses Spreadsheet (CloudSync Todo List) di Google Sheets menjadi 'Siapa saja yang memiliki link dapat melihat'.");
     });
   };
 
@@ -584,7 +585,7 @@ export default function App() {
     );
   }
 
-  if (!authenticated && !isLocalMode) {
+  if (!authenticated && !isLocalMode && !isReadOnly) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col items-center justify-center p-6 font-sans">
         <motion.div 
@@ -653,14 +654,18 @@ export default function App() {
               </button>
 
               {authenticated && spreadsheetId && !isReadOnly && (
-                <button
-                  onClick={copyShareLink}
-                  className="p-1.5 sm:p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-none hover:shadow-sm flex items-center gap-2"
-                  title="Salin Link Mode Lihat Saja"
-                >
-                  {copySuccess ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500" /> : <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />}
-                  {copySuccess && <span className="text-[10px] font-bold text-emerald-500 hidden sm:inline">Tersalin!</span>}
-                </button>
+                <div className="flex flex-col items-center">
+                  <button
+                    onClick={copyShareLink}
+                    className="p-1.5 sm:p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-none hover:shadow-sm flex items-center gap-2"
+                    title="Salin Link Mode Lihat Saja"
+                  >
+                    {copySuccess ? <Check className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500" /> : <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    <span className="text-[10px] font-black hidden sm:inline uppercase tracking-widest">
+                      {copySuccess ? <span className="text-emerald-500">Tersalin!</span> : <span>Bagikan</span>}
+                    </span>
+                  </button>
+                </div>
               )}
 
               {!isLocalMode && (

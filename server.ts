@@ -153,6 +153,36 @@ async function getSheetsClient(tokens: any) {
   return google.sheets({ version: 'v4', auth });
 }
 
+async function fetchPublicSheet(spreadsheetId: string) {
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=Sheet1`;
+  const response = await fetch(url);
+  const text = await response.text();
+  
+  const match = text.match(/google\.visualization\.Query\.setResponse\((.*)\);/);
+  if (!match) throw new Error("Format data spreadsheet tidak dikenal atau spreadsheet tidak publik.");
+  
+  const data = JSON.parse(match[1]);
+  if (data.status === 'error') {
+    throw new Error(data.errors?.[0]?.detailed_message || "Gagal mengambil data dari Google Sheets.");
+  }
+
+  const rows = data.table.rows;
+  return rows.map((row: any) => {
+    const cells = row.c;
+    return {
+      id: cells[0]?.v || '',
+      title: cells[1]?.v || '',
+      priority: cells[2]?.v || 'Medium',
+      deadline: cells[3]?.f || cells[3]?.v || '', // gviz uses .f for formatted date strings
+      description: cells[4]?.v || '',
+      status: cells[5]?.v || 'Belum Dikerjakan',
+      photoUrl: cells[6]?.v || '',
+      history: cells[7]?.v ? JSON.parse(cells[7].v) : [],
+      authorName: cells[8]?.v || ''
+    };
+  }).filter((t: any) => t.id && t.id !== 'ID');
+}
+
 async function getOrCreatePhotosFolder(drive: any) {
   const response = await drive.files.list({
     q: "name = 'My 2Dolist Photos' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
@@ -364,10 +394,20 @@ app.get("/api/tasks", async (req, res) => {
     if (tokens) {
       sheets = await getSheetsClient(tokens);
       spreadsheetId = (customId as string) || await getOrCreateSpreadsheet(sheets);
+    } else if (customId) {
+      // Fitur Public View Tanpa Login
+      // Menggunakan gviz/tq endpoint untuk mengambil data dari spreadsheet publik
+      try {
+        const publicTasks = await fetchPublicSheet(customId as string);
+        return res.json({ tasks: publicTasks, spreadsheetId: customId });
+      } catch (e: any) {
+        console.error("Public fetch error:", e);
+        return res.status(401).json({ 
+          error: "Daftar tugas ini bersifat privat atau tidak ditemukan.", 
+          details: "Pastikan Spreadsheet diset ke 'Siapa saja yang memiliki link dapat melihat' di Google Sheets." 
+        });
+      }
     } else {
-      // Jika hanya ada customId tanpa token, kita butuh cara untuk auth. 
-      // Untuk kemudahan, kita asumsikan viewer tetap login (authenticatedFetch akan mengirim token viewer).
-      // Jika viewer punya akses ke sheet tersebut, Google API akan mengizinkannya.
       return res.status(401).json({ error: "Silakan login untuk melihat daftar tugas ini." });
     }
 
