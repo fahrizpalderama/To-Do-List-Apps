@@ -113,19 +113,21 @@ app.all("/api/upload", (req, res, next) => {
   }
 });
 
+// JSON body parser for other routes
 app.use(express.json());
-
-// Export app for Vercel
-export default app;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const APP_URL = (process.env.APP_URL || "").replace(/\/$/, "");
 
-const REDIRECT_URI = `${APP_URL}/auth/callback`;
+const REDIRECT_URI = APP_URL ? `${APP_URL}/auth/callback` : "";
 
 if (!GOOGLE_CLIENT_ID) {
   console.warn("[AUTH] GOOGLE_CLIENT_ID is missing from environment variables.");
+}
+
+if (!APP_URL) {
+  console.warn("[AUTH] APP_URL is missing! Redirect URI will be invalid.");
 }
 
 const getOAuth2Client = () => {
@@ -245,20 +247,30 @@ app.get("/api/debug/config", (req, res) => {
 });
 
 app.get("/api/auth/url", (req, res) => {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    return res.status(500).json({ error: "Client ID atau Secret belum dikonfigurasi di Secrets panel." });
+  try {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+      return res.status(500).json({ error: "Google Client ID atau Secret belum diatur di Environment Variables Vercel." });
+    }
+    
+    if (!REDIRECT_URI) {
+      return res.status(500).json({ error: "APP_URL belum diatur di Environment Variables Vercel." });
+    }
+    
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: [
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/userinfo.profile'
+      ],
+      prompt: 'consent select_account'
+    });
+    res.json({ url, redirectUri: REDIRECT_URI });
+  } catch (error: any) {
+    console.error("[AUTH] Error generating URL:", error);
+    res.status(500).json({ error: "Gagal membuat URL login", details: error.message });
   }
-  
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: [
-      'https://www.googleapis.com/auth/userinfo.email',
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive.file'
-    ],
-    prompt: 'consent select_account'
-  });
-  res.json({ url, redirectUri: REDIRECT_URI });
 });
 
 app.get("/auth/callback", async (req, res) => {
@@ -595,3 +607,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;

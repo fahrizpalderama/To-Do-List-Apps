@@ -200,7 +200,20 @@ export default function App() {
   const login = async () => {
     try {
       const res = await fetch("/api/auth/url");
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Login URL fetch non-ok response:", text);
+        try {
+          const json = JSON.parse(text);
+          throw new Error(json.error || json.message || `Status ${res.status}`);
+        } catch (e) {
+          throw new Error(`Server error (${res.status}). Cek environment variables di Vercel.`);
+        }
+      }
+      
       const { url } = await res.json();
+      if (!url) throw new Error("Server tidak mengembalikan URL login.");
+      
       const popup = window.open(url, "oauth_popup", "width=600,height=700");
       
       const pollTimer = setInterval(() => {
