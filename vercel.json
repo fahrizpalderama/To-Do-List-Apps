@@ -4,9 +4,7 @@
     {
       "src": "package.json",
       "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+      "config": { "distDir": "dist" }
     },
     {
       "src": "server.ts",
@@ -14,17 +12,8 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/auth/callback",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/((?!api/|auth/callback).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/(.*)", "destination": "/server.ts" },
+    { "source": "/auth/callback", "destination": "/server.ts" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

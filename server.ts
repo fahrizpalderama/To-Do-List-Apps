@@ -118,27 +118,28 @@ app.use(express.json());
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const APP_URL = (process.env.APP_URL || "").replace(/\/$/, "");
 
-const REDIRECT_URI = APP_URL ? `${APP_URL}/auth/callback` : "";
+const getOAuthClient = () => {
+  const clientId = GOOGLE_CLIENT_ID;
+  const clientSecret = GOOGLE_CLIENT_SECRET;
+  let appUrl = process.env.APP_URL || "";
+  
+  if (!appUrl && process.env.VERCEL_URL) {
+    appUrl = `https://${process.env.VERCEL_URL}`;
+  }
+  
+  appUrl = appUrl.replace(/\/$/, "");
+  const redirectUri = appUrl ? `${appUrl}/auth/callback` : "";
 
-if (!GOOGLE_CLIENT_ID) {
-  console.warn("[AUTH] GOOGLE_CLIENT_ID is missing from environment variables.");
-}
+  if (!clientId || !clientSecret || !redirectUri) {
+    return { error: `Konfigurasi Google Auth tidak lengkap di Vercel. ID: ${clientId ? 'OK' : 'MISSING'}, URI: ${redirectUri ? 'OK' : 'MISSING'}. Pastikan APP_URL diatur di dashboard Vercel.` };
+  }
 
-if (!APP_URL) {
-  console.warn("[AUTH] APP_URL is missing! Redirect URI will be invalid.");
-}
-
-const getOAuth2Client = () => {
-  return new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    REDIRECT_URI
-  );
+  return { 
+    client: new google.auth.OAuth2(clientId, clientSecret, redirectUri),
+    redirectUri 
+  };
 };
-
-const oauth2Client = getOAuth2Client();
 
 // --- Google Drive/Sheets Helpers ---
 
@@ -236,27 +237,29 @@ app.get("/api/debug/routes", (req, res) => {
 });
 
 app.get("/api/debug/config", (req, res) => {
+  const authConfig = getOAuthClient();
   res.json({
     hasClientId: !!GOOGLE_CLIENT_ID,
     hasClientSecret: !!GOOGLE_CLIENT_SECRET,
     clientIdStart: GOOGLE_CLIENT_ID ? GOOGLE_CLIENT_ID.substring(0, 10) + "..." : "MISSING",
-    redirectUri: REDIRECT_URI,
+    redirectUri: 'redirectUri' in authConfig ? authConfig.redirectUri : "ERROR",
+    configError: 'error' in authConfig ? authConfig.error : null,
     nodeEnv: process.env.NODE_ENV,
-    appUrl: APP_URL
+    appUrl: process.env.APP_URL || "MISSING",
+    vercelUrl: process.env.VERCEL_URL || "MISSING"
   });
 });
 
 app.get("/api/auth/url", (req, res) => {
+  const authConfig = getOAuthClient();
+  
+  if ('error' in authConfig) {
+    console.error("[AUTH] Config Error:", authConfig.error);
+    return res.status(500).json({ error: authConfig.error });
+  }
+
   try {
-    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-      return res.status(500).json({ error: "Google Client ID atau Secret belum diatur di Environment Variables Vercel." });
-    }
-    
-    if (!REDIRECT_URI) {
-      return res.status(500).json({ error: "APP_URL belum diatur di Environment Variables Vercel." });
-    }
-    
-    const url = oauth2Client.generateAuthUrl({
+    const url = authConfig.client.generateAuthUrl({
       access_type: 'offline',
       scope: [
         'https://www.googleapis.com/auth/userinfo.email',
@@ -266,24 +269,23 @@ app.get("/api/auth/url", (req, res) => {
       ],
       prompt: 'consent select_account'
     });
-    res.json({ url, redirectUri: REDIRECT_URI });
+    res.json({ url, redirectUri: authConfig.redirectUri });
   } catch (error: any) {
-    console.error("[AUTH] Error generating URL:", error);
+    console.error("[AUTH] URL Gen Error:", error);
     res.status(500).json({ error: "Gagal membuat URL login", details: error.message });
   }
 });
 
 app.get("/auth/callback", async (req, res) => {
   const { code, error } = req.query;
-  
-  if (error) {
-    console.error("OAuth Error from Google:", error);
-    return res.status(403).send(`Authentication failed: ${error}`);
+  const authConfig = getOAuthClient();
+
+  if (error || 'error' in authConfig) {
+    return res.status(403).send(`Authentication failed: ${error || (authConfig as any).error}`);
   }
 
   try {
-    const { tokens } = await oauth2Client.getToken(code as string);
-    
+    const { tokens } = await authConfig.client.getToken(code as string);
     res.send(`
       <html>
         <body>
@@ -301,9 +303,8 @@ app.get("/auth/callback", async (req, res) => {
         </body>
       </html>
     `);
-  } catch (error) {
-    console.error("Auth Exception:", error);
-    res.status(500).send("Gagal menukar kode autentikasi dengan token.");
+  } catch (error: any) {
+    res.status(500).send(`Gagal menukar kode: ${error.message}`);
   }
 });
 
