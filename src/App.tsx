@@ -90,6 +90,20 @@ export default function App() {
   });
 
   const [isLocalMode, setIsLocalMode] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  // Helper untuk mendapatkan rentang tanggal
+  const getDates = (centerDate: Date) => {
+    const dates = [];
+    for (let i = -10; i <= 10; i++) {
+      const d = new Date(centerDate);
+      d.setDate(d.getDate() + i);
+      dates.push(d);
+    }
+    return dates;
+  };
+
+  const datesRange = getDates(new Date());
 
   // Helper untuk fetch dengan token
   const authenticatedFetch = (url: string, options: any = {}) => {
@@ -311,7 +325,13 @@ export default function App() {
     if (isLocalMode) {
       const newTask: Task = {
         id: Date.now().toString(),
-        ...payload
+        ...payload,
+        history: [{
+          timestamp: new Date().toISOString(),
+          status: payload.status,
+          photoUrl: payload.photoUrl || "",
+          note: "Pekerjaan dibuat (Lokal)"
+        }]
       };
       setTasks([newTask, ...tasks]);
       resetForm();
@@ -620,7 +640,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-300">
+    <div className="min-h-screen bg-indigo-50/30 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 pb-20 transition-colors duration-300">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -706,7 +726,7 @@ export default function App() {
           
           <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
             <button 
-              onClick={() => setActiveTab('active')}
+              onClick={() => { setActiveTab('active'); setSelectedDate(new Date()); }}
               className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'active' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 dark:shadow-none' : 'text-slate-400 hover:text-indigo-600'}`}
             >
               Tugas Aktif
@@ -732,6 +752,51 @@ export default function App() {
             )}
           </div>
         </section>
+
+        {activeTab === 'active' && (
+          <motion.section 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-indigo-600/10 dark:bg-indigo-950/20 rounded-[40px] p-6 sm:p-8 space-y-6"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-indigo-900 dark:text-indigo-100 tracking-tight">TaskList</h3>
+              <div className="text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full shadow-sm">
+                Rencana Kerja
+              </div>
+            </div>
+
+            <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar -mx-2 px-2 snap-x">
+              {datesRange.map((d, i) => {
+                const isSelected = d.toDateString() === selectedDate.toDateString();
+                const dayName = d.toLocaleDateString('id-ID', { weekday: 'short' });
+                const monthName = d.toLocaleDateString('id-ID', { month: 'short' });
+                const dayNum = d.getDate();
+                
+                return (
+                  <motion.button
+                    key={i}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setSelectedDate(d)}
+                    className={`flex-shrink-0 w-20 h-32 rounded-[28px] flex flex-col items-center justify-center gap-1 transition-all snap-center ${
+                      isSelected 
+                        ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200 dark:shadow-none translate-y-[-4px]' 
+                        : 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 border border-indigo-100/50 dark:border-slate-800'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-tighter opacity-80">{monthName}</span>
+                    <span className="text-2xl font-black">{dayNum}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{dayName}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+            <div className="flex justify-center">
+               <div className="w-20 h-1.5 bg-indigo-200 dark:bg-indigo-900/50 rounded-full opacity-50" />
+            </div>
+          </motion.section>
+        )}
 
         {/* Modal App */}
         <AnimatePresence>
@@ -960,18 +1025,67 @@ export default function App() {
 
         {/* Tasks List */}
         <div className="space-y-3">
-          {(!tasks.some(t => activeTab === 'active' ? (t.status !== 'Selesai' && t.status !== 'Terlambat') : (t.status === 'Selesai' || t.status === 'Terlambat'))) && !loading ? (
+          <div className="flex items-center justify-between px-2">
+            <h4 className="text-sm font-black text-slate-900 dark:text-white tracking-widest uppercase">Tasks</h4>
+            <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+              {activeTab === 'active' ? 'By Date' : 'All History'}
+            </div>
+          </div>
+          {(!tasks.some(t => {
+            if (activeTab === 'completed') return (t.status === 'Selesai' || t.status === 'Terlambat');
+            
+            const isNotFinished = (t.status !== 'Selesai' && t.status !== 'Terlambat');
+            if (!isNotFinished) return false;
+            
+            // Logika baru: Tampilkan dari tanggal dibuat sampai deadline
+            // Kita gunakan data pertama di history sebagai tanggal pembuatan jika tidak ada field khusus
+            const createDate = t.history && t.history.length > 0 && t.history[0].timestamp ? new Date(t.history[0].timestamp) : new Date();
+            createDate.setHours(0, 0, 0, 0);
+
+            const checkDate = new Date(selectedDate);
+            checkDate.setHours(0, 0, 0, 0);
+
+            if (!t.deadline) {
+              // Jika tidak ada deadline, hanya muncul di hari dia dibuat
+              return checkDate.toDateString() === createDate.toDateString();
+            }
+
+            const deadlineDate = new Date(t.deadline);
+            deadlineDate.setHours(0, 0, 0, 0);
+
+            return checkDate >= createDate && checkDate <= deadlineDate;
+          })) && !loading ? (
             <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
               <div className="bg-slate-100 dark:bg-slate-800 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Sheet className="text-slate-400 w-6 h-6" />
               </div>
               <p className="text-slate-500 dark:text-slate-400 italic">
-                {activeTab === 'active' ? 'Belum ada tugas aktif. Spreadsheet Anda bersih!' : 'Belum ada tugas yang diselesaikan.'}
+                {activeTab === 'active' ? `Belum ada tugas aktif untuk tanggal ${selectedDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}.` : 'Belum ada tugas yang diselesaikan.'}
               </p>
             </div>
           ) : (
             tasks
-              .filter(task => activeTab === 'active' ? (task.status !== 'Selesai' && task.status !== 'Terlambat') : (task.status === 'Selesai' || task.status === 'Terlambat'))
+              .filter(task => {
+                if (activeTab === 'completed') return (task.status === 'Selesai' || task.status === 'Terlambat');
+                
+                const isNotFinished = (task.status !== 'Selesai' && task.status !== 'Terlambat');
+                if (!isNotFinished) return false;
+                
+                const createDate = task.history && task.history.length > 0 && task.history[0].timestamp ? new Date(task.history[0].timestamp) : new Date();
+                createDate.setHours(0, 0, 0, 0);
+
+                const checkDate = new Date(selectedDate);
+                checkDate.setHours(0, 0, 0, 0);
+
+                if (!task.deadline) {
+                  return checkDate.toDateString() === createDate.toDateString();
+                }
+
+                const deadlineDate = new Date(task.deadline);
+                deadlineDate.setHours(0, 0, 0, 0);
+
+                return checkDate >= createDate && checkDate <= deadlineDate;
+              })
               .map((task) => (
                 <motion.div
                 layout
@@ -992,7 +1106,7 @@ export default function App() {
                 </button>
 
                 <div className={`flex-1 min-w-0 ${isReadOnly ? '' : 'cursor-pointer'}`} onClick={() => !isReadOnly && (task.status !== 'Selesai' && task.status !== 'Terlambat') && openEditModal(task)}>
-                  <h3 className={`font-bold truncate text-base ${task.status === 'Selesai' || task.status === 'Terlambat' || task.status === 'Dialihkan' || task.status === 'Batal Dikerjakan' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-white'}`}>
+                  <h3 className={`font-bold truncate text-base ${task.status === 'Selesai' || task.status === 'Terlambat' || task.status === 'Dialihkan' || task.status === 'Batal Dikerjakan' ? 'line-through text-slate-400 dark:text-slate-500' : 'text-indigo-900 dark:text-indigo-100'}`}>
                     {task.title}
                   </h3>
                   {task.description && (
@@ -1175,14 +1289,6 @@ export default function App() {
       </AnimatePresence>
 
       {/* Quick Update Button for mobile? No, it's inside the card already */}
-
-      {/* Floating UI Elements */}
-      <div className="fixed bottom-6 left-6 right-6 max-w-4xl mx-auto flex items-center justify-end pointer-events-none">
-        <div className="pointer-events-auto bg-slate-900 dark:bg-slate-800 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 text-xs font-bold tracking-widest uppercase border border-slate-700 dark:border-slate-700">
-          <Sheet className="w-4 h-4 text-emerald-400" />
-          Tersinkron dengan Drive
-        </div>
-      </div>
     </div>
   );
 }
