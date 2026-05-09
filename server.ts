@@ -47,7 +47,7 @@ app.use(session({
 
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) {
-    console.log(`[API-CHECK] ${req.method} ${req.path}`);
+    console.log(`[API-CHECK] ${req.method} ${req.path} | OriginalUrl: ${req.originalUrl} | Url: ${req.url}`);
   }
   next();
 });
@@ -580,9 +580,23 @@ app.use((err: any, req: any, res: any, next: any) => {
   next(err);
 });
 
-// --- Vite Middleware ---
+// --- Vite Middleware & Production Serving ---
 
 async function startServer() {
+  // If we are on Vercel, we only want to handle API routes.
+  // Static files are handled by Vercel's edge via rewrites in vercel.json.
+  if (process.env.VERCEL) {
+    console.log("[SERVER] Running on Vercel - Skipping static file serving & catch-all index.html");
+    
+    // Add a final JSON catch-all for any missed /api routes
+    app.all("/api/*", (req, res) => {
+      console.warn(`[NOT-FOUND] API Route not caught: ${req.method} ${req.path}`);
+      res.status(404).json({ error: "API route not found in serverless function", path: req.path });
+    });
+    
+    return;
+  }
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -591,19 +605,22 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    console.log(`[SERVER] Production mode - Serving static files from ${distPath}`);
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
+      // Don't serve HTML for API requests that fell through
+      if (req.path.startsWith("/api/")) {
+        return res.status(404).json({ error: "API route not found" });
+      }
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
 
   // Only listen if not running as a Vercel serverless function
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running at http://localhost:${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-  }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
 }
 
 startServer();
