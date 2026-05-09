@@ -28,15 +28,16 @@ Google OAuth sangat ketat terhadap URL redirect. Anda harus mendaftarkan URL Ver
 
 ---
 
-## 3. Masalah "Gagal memuat URL login"
+## 3. Masalah "Google has not completed the verification process" (Error 403)
 
-Jika Anda masih melihat error ini setelah deploy:
-1. **Pastikan Variabel Lingkungan sudah benar**: Cek kembali apakah `GOOGLE_CLIENT_ID` dan `GOOGLE_CLIENT_SECRET` sudah dimasukkan di Vercel.
-2. **Redeploy**: Setelah mengubah Environment Variables di Vercel, Anda biasanya perlu melakukan **Redeploy** agar perubahan tersebut diterapkan.
-3. **Cek Log**: Buka tab **Logs** di dashboard Vercel untuk melihat jika ada pesan error spesifik dari server saat mencoba mengakses `/api/auth/url`.
+Jika orang lain (selain email dev Anda) melihat error `403: access_denied` saat mencoba login, itu karena Google Project Anda masih dalam mode **Testing**.
 
-## Diagnosa Mandiri
-Anda dapat mengecek status konfigurasi server dengan mengakses:
-`https://nama-proyek-anda.vercel.app/api/debug/config`
+**Cara Memperbaiki:**
+1. Buka [Google Cloud Console OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent).
+2. Ada dua pilihan:
+   - **Pilihan A**: Tambahkan email mereka di bagian **Test Users**.
+   - **Pilihan B**: Klik tombol **PUBLISH APP** agar statusnya menjadi "In Production".
+3. Jika Anda memilih Pilihan B, Google akan menampilkan peringatan "App not verified". Pengguna cukup klik **Advanced** -> **Go to [nama-app] (unsafe)** untuk melanjutkan.
 
-Jika `hasClientId` atau `hasClientSecret` bernilai `false`, berarti variabel lingkungan belum terbaca dengan benar oleh Vercel.
+## 4. Diagnosa Mandiri
+Akses: `https://nama-proyek-anda.vercel.app/api/debug/config`
