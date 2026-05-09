@@ -91,6 +91,7 @@ export default function App() {
 
   const [isLocalMode, setIsLocalMode] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const dateContainerRef = useRef<HTMLDivElement>(null);
 
   // Helper untuk mendapatkan rentang tanggal
   const getDates = (centerDate: Date) => {
@@ -175,6 +176,26 @@ export default function App() {
       requestNotificationPermission();
     }
   }, [authenticated, isLocalMode]);
+
+  // Task 3: Auto-refresh for Read-Only mode
+  useEffect(() => {
+    if (isReadOnly) {
+      const interval = setInterval(() => {
+        fetchTasks(true); // Silent refresh
+      }, 30000); // 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isReadOnly]);
+
+  // Task 1: Auto-scroll to today on mount or when tab becomes active
+  useEffect(() => {
+    if (activeTab === 'active' && dateContainerRef.current) {
+      const todayBtn = dateContainerRef.current.querySelector('[data-today="true"]');
+      if (todayBtn) {
+        todayBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }, [activeTab, loading]);
 
   // Handle local storage persistence
   useEffect(() => {
@@ -273,9 +294,9 @@ export default function App() {
     }
   };
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (isSilent = false) => {
     if (isLocalMode) return;
-    setLoading(true);
+    if (!isSilent) setLoading(true);
     try {
       const params = new URLSearchParams(window.location.search);
       const shareId = params.get("share");
@@ -294,7 +315,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -688,7 +709,7 @@ export default function App() {
                 </div>
               )}
 
-              {!isLocalMode && (
+              {!isLocalMode && !isReadOnly && authenticated && (
                 <button 
                   onClick={fetchTasks}
                   className="p-1.5 sm:p-2 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-none hover:shadow-sm"
@@ -697,13 +718,15 @@ export default function App() {
                   <Loader2 className={`w-4 h-4 sm:w-5 sm:h-5 ${loading ? 'animate-spin' : ''}`} />
                 </button>
               )}
-              <button 
-                onClick={logout}
-                className="p-1.5 sm:p-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-none hover:shadow-sm"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
+              {authenticated && !isReadOnly && (
+                <button 
+                  onClick={logout}
+                  className="p-1.5 sm:p-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-none hover:shadow-sm"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -766,9 +789,13 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar -mx-2 px-2 snap-x">
+            <div 
+              ref={dateContainerRef}
+              className="flex gap-3 overflow-x-auto pb-6 pt-2 no-scrollbar -mx-2 px-2 snap-x"
+            >
               {datesRange.map((d, i) => {
                 const isSelected = d.toDateString() === selectedDate.toDateString();
+                const isToday = d.toDateString() === new Date().toDateString();
                 const dayName = d.toLocaleDateString('id-ID', { weekday: 'short' });
                 const monthName = d.toLocaleDateString('id-ID', { month: 'short' });
                 const dayNum = d.getDate();
@@ -776,15 +803,21 @@ export default function App() {
                 return (
                   <motion.button
                     key={i}
+                    data-today={isToday}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setSelectedDate(d)}
-                    className={`flex-shrink-0 w-20 h-32 rounded-[28px] flex flex-col items-center justify-center gap-1 transition-all snap-center ${
+                    className={`flex-shrink-0 w-20 h-32 rounded-[28px] flex flex-col items-center justify-center gap-1 transition-all snap-center relative ${
                       isSelected 
                         ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200 dark:shadow-none translate-y-[-4px]' 
                         : 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 border border-indigo-100/50 dark:border-slate-800'
                     }`}
                   >
+                    {isToday && (
+                      <span className={`absolute -top-1 px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest ${isSelected ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}>
+                        Today
+                      </span>
+                    )}
                     <span className="text-[10px] font-black uppercase tracking-tighter opacity-80">{monthName}</span>
                     <span className="text-2xl font-black">{dayNum}</span>
                     <span className="text-[10px] font-bold uppercase tracking-widest">{dayName}</span>
@@ -1085,6 +1118,10 @@ export default function App() {
                 deadlineDate.setHours(0, 0, 0, 0);
 
                 return checkDate >= createDate && checkDate <= deadlineDate;
+              })
+              .sort((a, b) => {
+                const priorityOrder = { 'High': 0, 'Medium': 1, 'Low': 2 };
+                return priorityOrder[a.priority] - priorityOrder[b.priority];
               })
               .map((task) => (
                 <motion.div
