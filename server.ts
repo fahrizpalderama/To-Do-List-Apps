@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
@@ -9,13 +8,12 @@ import dotenv from "dotenv";
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import { Readable } from 'stream';
-
 import cors from "cors";
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Standard log for Vercel
+console.log("[SERVER] Initialization...");
 
 const app = express();
 const PORT = 3000;
@@ -599,6 +597,7 @@ async function startServer() {
   }
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -617,7 +616,12 @@ async function startServer() {
     });
   }
 
-  // Only listen if not running as a Vercel serverless function
+  // Only listen if NOT running as a Vercel serverless function
+  if (process.env.VERCEL) {
+    console.log("[SERVER] Vercel mode ready.");
+    return;
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running at http://localhost:${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
