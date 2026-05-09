@@ -57,12 +57,9 @@ app.use((req, res, next) => {
 // Important: Define upload route BEFORE generic body-parsings
 app.all("/api/upload", (req, res, next) => {
   console.log(`[Upload-DEBUG] ${req.method} request to /api/upload from ${req.ip}`);
-  console.log(`[Upload-DEBUG] Headers: ${JSON.stringify(req.headers)}`);
-  
   if (req.method === 'GET') {
     return res.json({ message: "Upload endpoint is active. Use POST to upload files." });
   }
-
   if (req.method !== 'POST') {
     return res.status(405).json({ error: "Hanya metode POST yang diizinkan untuk upload" });
   }
@@ -72,81 +69,54 @@ app.all("/api/upload", (req, res, next) => {
       console.error("[Upload] Multer error:", err);
       return res.status(400).json({ error: "Gagal memproses file upload", details: err.message });
     }
-    console.log("[Upload-DEBUG] Multer success, file found:", req.file ? "YES (" + req.file.originalname + ")" : "NO");
     next();
   });
 }, async (req, res) => {
-  console.log("[Upload] Processing upload in handler...");
-  
   res.setHeader('Content-Type', 'application/json');
-
   let tokens;
   try {
     tokens = getTokensFromHeader(req);
   } catch (e: any) {
-    console.error("[Upload] Auth extraction error:", e.message);
-    return res.status(401).json({ error: "Otentikasi tidak valid, silakan login ulang." });
+    return res.status(401).json({ error: "Otentikasi tidak valid." });
   }
-
-  if (!tokens) {
-    console.warn("[Upload] Unauthorized - No tokens found");
-    return res.status(401).json({ error: "Silakan login ulang untuk sinkronisasi foto." });
-  }
-
-  if (!req.file) {
-    console.warn("[Upload] No file in request");
-    return res.status(400).json({ error: "Tidak ada file yang diterima. Pastikan menggunakan field 'photo'." });
+  if (!tokens || !req.file) {
+    return res.status(400).json({ error: "Data tidak lengkap" });
   }
 
   try {
     const drive = await getDriveClient(tokens);
     const folderId = await getOrCreatePhotosFolder(drive);
-
     const fileMetadata = {
       name: `todo_${Date.now()}_${req.file.originalname}`,
       parents: [folderId],
     };
-
     const media = {
       mimeType: req.file.mimetype,
       body: Readable.from(req.file.buffer),
     };
-
-    console.log("[Upload] Sending file to Google Drive...");
     const file = await drive.files.create({
       requestBody: fileMetadata,
       media: media,
       fields: 'id'
     });
-
     const fileId = file.data.id;
-    // URL for direct view
     const downloadUrl = `https://drive.google.com/uc?id=${fileId}`;
-
-    // Try to set public permissions
     try {
       await drive.permissions.create({
         fileId: fileId!,
         requestBody: { role: 'reader', type: 'anyone' },
       });
-      console.log("[Upload] Permissions set to anyone:reader");
-    } catch (permErr: any) {
-      console.warn("[Upload] Permission error (likely non-fatal):", permErr.message);
-    }
-
-    console.log("[Upload] Success! ID:", fileId, "URL:", downloadUrl);
+    } catch (permErr: any) {}
     return res.json({ id: fileId, url: downloadUrl });
   } catch (error: any) {
-    console.error("[Upload] Drive Error:", error);
-    return res.status(500).json({ 
-      error: "Gagal mengunggah ke Google Drive", 
-      details: error.message 
-    });
+    return res.status(500).json({ error: error.message });
   }
 });
 
-// JSON body parser for other routes
 app.use(express.json());
+
+// Export app for Vercel
+export default app;
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -154,11 +124,19 @@ const APP_URL = (process.env.APP_URL || "").replace(/\/$/, "");
 
 const REDIRECT_URI = `${APP_URL}/auth/callback`;
 
-const oauth2Client = new google.auth.OAuth2(
-  GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET,
-  REDIRECT_URI
-);
+if (!GOOGLE_CLIENT_ID) {
+  console.warn("[AUTH] GOOGLE_CLIENT_ID is missing from environment variables.");
+}
+
+const getOAuth2Client = () => {
+  return new google.auth.OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    REDIRECT_URI
+  );
+};
+
+const oauth2Client = getOAuth2Client();
 
 // --- Google Drive/Sheets Helpers ---
 
@@ -593,14 +571,6 @@ app.use((err: any, req: any, res: any, next: any) => {
 // --- Vite Middleware ---
 
 async function startServer() {
-  // Catch-all logger to identify requests falling through to Vite
-  app.all("*", (req, res, next) => {
-    if (req.path.startsWith("/api")) {
-      console.warn(`[FALLTHROUGH] ${req.method} ${req.path} hit fallback`);
-    }
-    next();
-  });
-
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -615,10 +585,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
+  // Only listen if not running as a Vercel serverless function
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  }
 }
 
 startServer();

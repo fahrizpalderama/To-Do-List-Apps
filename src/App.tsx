@@ -213,8 +213,9 @@ export default function App() {
           }
         }
       }, 1000);
-    } catch (e) {
-      alert("Gagal memuat URL login. Pastikan server berjalan.");
+    } catch (e: any) {
+      console.error("Login URL fetch error:", e);
+      alert(`Gagal memuat URL login: ${e.message}\n\nPastikan GOOGLE_CLIENT_ID dan APP_URL sudah disetting di Environment Variables Vercel.`);
     }
   };
 
