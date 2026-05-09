@@ -1,0 +1,6 @@
+{
+  "name": "CloudSync Todo",
+  "description": "A smart, minimalist to-do list that syncs directly with your Google Drive spreadsheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["Google Sheets Sync", "Smart Notifications", "Full-stack Storage"]
+}
