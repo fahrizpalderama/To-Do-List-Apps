@@ -89,9 +89,20 @@ export default function App() {
     return 'light';
   });
 
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isLocalMode, setIsLocalMode] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const dateContainerRef = useRef<HTMLDivElement>(null);
+
+  const getDisplayUrl = (url: string) => {
+    if (!url) return "";
+    // If it's a Google Drive UC link, convert to thumbnail link for better embedding reliability
+    if (url.includes("drive.google.com/uc?id=")) {
+      const id = url.split("id=")[1]?.split("&")[0];
+      if (id) return `https://drive.google.com/thumbnail?id=${id}&sz=w1200`;
+    }
+    return url;
+  };
 
   // Helper untuk mendapatkan rentang tanggal
   const getDates = (centerDate: Date) => {
@@ -433,7 +444,13 @@ export default function App() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || isLocalMode) return;
+    if (!file) return;
+
+    if (isLocalMode) {
+      const localUrl = URL.createObjectURL(file);
+      setPhotoUrl(localUrl);
+      return;
+    }
 
     setIsUploading(true);
     
@@ -974,18 +991,29 @@ export default function App() {
                             ) : (
                               <>
                                 <img 
-                                  src={photoUrl} 
+                                  src={getDisplayUrl(photoUrl)} 
                                   alt="Preview" 
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover cursor-pointer"
+                                  onClick={() => setPreviewImage(photoUrl)}
                                 />
-                                <button 
-                                  type="button"
-                                  onClick={() => setPhotoUrl("")}
-                                  className="absolute top-2 right-2 bg-rose-500 text-white p-1 rounded-full opacity-80 group-hover:opacity-100 transition-opacity"
-                                >
-                                  <Plus className="w-4 h-4 rotate-45" />
-                                </button>
+                                <div className="absolute top-2 right-2 flex gap-1">
+                                  <button 
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="bg-indigo-600 text-white p-1.5 rounded-full shadow-lg opacity-90 hover:opacity-100 transition-opacity"
+                                    title="Ganti Foto"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                  </button>
+                                  <button 
+                                    type="button"
+                                    onClick={() => setPhotoUrl("")}
+                                    className="bg-rose-500 text-white p-1.5 rounded-full shadow-lg opacity-90 hover:opacity-100 transition-opacity"
+                                    title="Hapus Foto"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </>
                             )}
                           </div>
@@ -1176,9 +1204,15 @@ export default function App() {
                       {task.priority === 'High' ? 'Prioritas Tinggi' : task.priority === 'Medium' ? 'Prioritas Sedang' : 'Prioritas Rendah'}
                     </span>
                     {task.photoUrl && (
-                      <a href={task.photoUrl} target="_blank" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewImage(task.photoUrl || null);
+                        }} 
+                        className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
                         <Camera className="w-3 h-3" /> Foto Terakhir
-                      </a>
+                      </button>
                     )}
                     {task.authorName && (
                       <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-3">
@@ -1296,10 +1330,10 @@ export default function App() {
                         {item.photoUrl && (
                           <div className="mt-2 group relative inline-block">
                             <img 
-                              src={item.photoUrl} 
+                              src={getDisplayUrl(item.photoUrl)} 
                               alt="Update" 
                               className="w-32 h-20 object-cover rounded-xl border border-slate-200 dark:border-slate-800 cursor-pointer shadow-sm hover:shadow-md transition-all"
-                              onClick={() => window.open(item.photoUrl, '_blank')}
+                              onClick={() => setPreviewImage(item.photoUrl)}
                             />
                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-xl transition-opacity pointer-events-none">
                               <ImageIcon className="text-white w-5 h-5" />
@@ -1325,7 +1359,42 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Quick Update Button for mobile? No, it's inside the card already */}
+      {/* Full Screen Image Preview Modal */}
+      <AnimatePresence>
+        {previewImage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl" onClick={() => setPreviewImage(null)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-5xl w-full h-full flex items-center justify-center text-white"
+            >
+              <button 
+                onClick={() => setPreviewImage(null)}
+                className="absolute top-2 right-2 sm:-top-12 sm:-right-12 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all z-10"
+              >
+                <X className="w-8 h-8" />
+              </button>
+              
+              <img 
+                src={getDisplayUrl(previewImage)} 
+                alt="Full Preview" 
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl shadow-indigo-500/10"
+              />
+
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
+                 <button 
+                  onClick={() => window.open(previewImage, '_blank')}
+                  className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg"
+                 >
+                    <Upload className="w-4 h-4" /> Buka Tab Baru
+                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
