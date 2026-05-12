@@ -117,20 +117,33 @@ app.use(express.json());
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
-const getOAuthClient = () => {
+const getOAuthClient = (req?: express.Request) => {
   const clientId = GOOGLE_CLIENT_ID;
   const clientSecret = GOOGLE_CLIENT_SECRET;
+  
+  // Try to determine the APP_URL dynamically or from env
   let appUrl = process.env.APP_URL || "";
   
   if (!appUrl && process.env.VERCEL_URL) {
     appUrl = `https://${process.env.VERCEL_URL}`;
   }
+
+  // Fallback to searching from request if available (for environments where APP_URL is not set)
+  if (!appUrl && req) {
+    const host = req.get('host');
+    if (host) {
+      const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+      appUrl = `${protocol}://${host}`;
+    }
+  }
   
   appUrl = appUrl.replace(/\/$/, "");
   const redirectUri = appUrl ? `${appUrl}/auth/callback` : "";
 
+  console.log(`[DEBUG-OAUTH] APP_URL: ${appUrl} | RedirectURI: ${redirectUri}`);
+
   if (!clientId || !clientSecret || !redirectUri) {
-    return { error: `Konfigurasi Google Auth tidak lengkap di Vercel. ID: ${clientId ? 'OK' : 'MISSING'}, URI: ${redirectUri ? 'OK' : 'MISSING'}. Pastikan APP_URL diatur di dashboard Vercel.` };
+    return { error: `Konfigurasi Google Auth tidak lengkap. ID: ${clientId ? 'OK' : 'MISSING'}, URI: ${redirectUri ? 'OK' : 'MISSING'}. Pastikan APP_URL diatur di dashboard.` };
   }
 
   return { 
@@ -265,7 +278,7 @@ app.get("/api/debug/routes", (req, res) => {
 });
 
 app.get("/api/debug/config", (req, res) => {
-  const authConfig = getOAuthClient();
+  const authConfig = getOAuthClient(req);
   res.json({
     hasClientId: !!GOOGLE_CLIENT_ID,
     hasClientSecret: !!GOOGLE_CLIENT_SECRET,
@@ -279,7 +292,7 @@ app.get("/api/debug/config", (req, res) => {
 });
 
 app.get("/api/auth/url", (req, res) => {
-  const authConfig = getOAuthClient();
+  const authConfig = getOAuthClient(req);
   
   if ('error' in authConfig) {
     console.error("[AUTH] Config Error:", authConfig.error);
@@ -306,7 +319,7 @@ app.get("/api/auth/url", (req, res) => {
 
 app.get("/auth/callback", async (req, res) => {
   const { code, error } = req.query;
-  const authConfig = getOAuthClient();
+  const authConfig = getOAuthClient(req);
 
   if (error || 'error' in authConfig) {
     return res.status(403).send(`Authentication failed: ${error || (authConfig as any).error}`);
